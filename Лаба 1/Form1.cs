@@ -15,13 +15,21 @@ namespace WindowsFormsApp2
     {
         BaseMathAction baseMath = new BaseMathAction();
         ComplicatedMathActions complicatedMath = new ComplicatedMathActions();
-        private Dictionary<string,List<double>> TableFunctionList;
-        private Dictionary<string, List<double>> TableLKRAList;
-        private Dictionary<string, List<double>> TablePKRAList;
-        private Dictionary<string, List<double>> TableCKRAList;
-        private Dictionary<string, List<double>> TableCKRA2List;
+
+        private const double M2 = 6.288;
+        private const double M3 = 12.611;
+        private const double M4 = 51.569;
+
+        private readonly double E;
+        public enum Params
+        {
+            LKRA_PKRA = 0,
+            CKRA1 = 1,
+            CKRA2 = 2
+        }
 
         public delegate double TableDelegate(double x, double h);
+
         public Form1()
         {
             InitializeComponent();
@@ -35,11 +43,7 @@ namespace WindowsFormsApp2
             CKRATable.Columns[1].Name = "y";
             CKRA2Table.Columns[0].Name = "x";
             CKRA2Table.Columns[1].Name = "y";
-            TableFunctionList = new Dictionary<string, List<double>>();
-            TableLKRAList = new Dictionary<string, List<double>>();
-            TablePKRAList = new Dictionary<string, List<double>>();
-            TableCKRAList = new Dictionary<string, List<double>>();
-            TableCKRA2List = new Dictionary<string, List<double>>();
+            E = baseMath.findE();
         }
 
         public void DrawGraphic(Chart chart, DataGridView data, string legend, Color color)
@@ -53,6 +57,7 @@ namespace WindowsFormsApp2
                 chart.Series[legend].Points.AddXY(Convert.ToDouble(data["x", i].Value), Convert.ToDouble(data["y", i].Value));
             }
         }
+
 
         public void FillTable(Dictionary<string, List<double>> valuePairs, DataGridView Table)
         {
@@ -77,18 +82,31 @@ namespace WindowsFormsApp2
             TableDelegate ckraTableDelegate = baseMath.CKRA;
             TableDelegate ckra2TableDelegate = baseMath.CKRA2;
 
-            TableFunctionList = complicatedMath.getTable(Convert.ToDouble(LeftBorderField.Text), Convert.ToDouble(RightBorderField.Text), Convert.ToDouble(StepField.Text), functionTableDelegate);
-            TableLKRAList = complicatedMath.getTable(Convert.ToDouble(LeftBorderField.Text), Convert.ToDouble(RightBorderField.Text), Convert.ToDouble(StepField.Text), lkraTableDelegate);
-            TablePKRAList = complicatedMath.getTable(Convert.ToDouble(LeftBorderField.Text), Convert.ToDouble(RightBorderField.Text), Convert.ToDouble(StepField.Text), pkraTableDelegate);
-            TableCKRAList = complicatedMath.getTable(Convert.ToDouble(LeftBorderField.Text), Convert.ToDouble(RightBorderField.Text), Convert.ToDouble(StepField.Text), ckraTableDelegate);
-            TableCKRA2List = complicatedMath.getTable(Convert.ToDouble(LeftBorderField.Text), Convert.ToDouble(RightBorderField.Text), Convert.ToDouble(StepField.Text), ckra2TableDelegate);
+            Dictionary<string, List<double>> FunctionPairs = complicatedMath.getTable(Convert.ToDouble(LeftBorderField.Text), Convert.ToDouble(RightBorderField.Text), Convert.ToDouble(StepField.Text), functionTableDelegate);
+            List<double> x = FunctionPairs["x"];
+
+            Dictionary<string, double> LKRA_PKRA_Params = complicatedMath.findOptimalParams(Convert.ToDouble(EpsilonField.Text), Convert.ToDouble(StepField.Text), x, Params.LKRA_PKRA);
+            Dictionary<string, double> CKRA1Params = complicatedMath.findOptimalParams(Convert.ToDouble(EpsilonField.Text), Convert.ToDouble(StepField.Text), x, Params.CKRA1);
+             Dictionary<string, double> CKRA2Params = complicatedMath.findOptimalParams(Convert.ToDouble(EpsilonField.Text), Convert.ToDouble(StepField.Text), x, Params.CKRA2);
+
+            Approximation PKRA = new Approximation(LKRA_PKRA_Params["h"], LKRA_PKRA_Params["MaxDiffPKRA"]);
+            Approximation LKRA = new Approximation(LKRA_PKRA_Params["h"], LKRA_PKRA_Params["MaxDiffLKRA"]);
+            Approximation Function = new Approximation(LKRA_PKRA_Params["h"], null);
+            Approximation CKRA1 = new Approximation(CKRA1Params["h"], CKRA1Params["MaxDiffCKRA1"]);
+            Approximation CKRA2 = new Approximation(CKRA2Params["h"], CKRA2Params["MaxDiffCKRA2"]);
+
+            LKRA.TableData = complicatedMath.getTable(Convert.ToDouble(LeftBorderField.Text), Convert.ToDouble(RightBorderField.Text), LKRA.getH(), lkraTableDelegate);
+            PKRA.TableData = complicatedMath.getTable(Convert.ToDouble(LeftBorderField.Text), Convert.ToDouble(RightBorderField.Text), PKRA.getH(), pkraTableDelegate);
+            CKRA1.TableData = complicatedMath.getTable(Convert.ToDouble(LeftBorderField.Text), Convert.ToDouble(RightBorderField.Text), CKRA1.getH(), ckraTableDelegate);
+            CKRA2.TableData = complicatedMath.getTable(Convert.ToDouble(LeftBorderField.Text), Convert.ToDouble(RightBorderField.Text), CKRA2.getH(), ckra2TableDelegate);
+            Function.TableData = complicatedMath.getTable(Convert.ToDouble(LeftBorderField.Text), Convert.ToDouble(RightBorderField.Text), Function.getH(), functionTableDelegate);
 
 
-            FillTable(TableFunctionList, FunctionTable);
-            FillTable(TableLKRAList, LKRATable);
-            FillTable(TablePKRAList, PKRATable);
-            FillTable(TableCKRAList, CKRATable);
-            FillTable(TableCKRA2List, CKRA2Table);
+            FillTable(Function.TableData, FunctionTable);
+            FillTable(LKRA.TableData, LKRATable);
+            FillTable(PKRA.TableData, PKRATable);
+            FillTable(CKRA1.TableData, CKRATable);
+            FillTable(CKRA2.TableData, CKRA2Table);
 
             Chart.Series.Clear();
 
@@ -97,6 +115,17 @@ namespace WindowsFormsApp2
             DrawGraphic(Chart, LKRATable, LKRALabel.Text, Color.Orange);
             DrawGraphic(Chart, CKRATable, CKRALabel.Text, Color.Green);
             DrawGraphic(Chart, CKRA2Table, CKRA2Label.Text, Color.Black);
+
+            R1Field.Text = ((M2 * LKRA_PKRA_Params["h"])/2.0).ToString();
+            R2Field.Text = ((2.0 * E) / LKRA_PKRA_Params["h"]).ToString();
+            H0LRField.Text = (2.0 * Math.Sqrt(E / M2)).ToString();
+            H0CField.Text = Math.Pow(((3 * E) / M3), 1.0 / 3.0).ToString();
+            H0C2Field.Text = (2 * Math.Pow(((3 * E) / M4), 1.0 / 4.0)).ToString();
+
+            RLRField.Text = LKRA_PKRA_Params["MaxDiffPKRA"].ToString();
+            RCField.Text = CKRA1Params["MaxDiffCKRA1"].ToString();
+            RC2Field.Text = CKRA2Params["MaxDiffCKRA2"].ToString();
+
         }
     }
 }
